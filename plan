@@ -1,0 +1,6 @@
+1Setup Ollama + MistralSame — no change
+2File parserSame — no change
+3LLM prompt → chart codeSame — no change
+4Code executorAdd: Q&A chain (2-step LLM call)
+5FastAPI + React frontendAdd: chat UI + report button
+6Polish + interview prepTest all 3 features together
