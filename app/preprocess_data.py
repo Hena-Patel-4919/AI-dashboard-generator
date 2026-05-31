@@ -6,23 +6,12 @@ import chardet
 from pathlib import Path
 from dateutil.parser import parse, ParserError
 
-
-# =============================================================
 # DATA PROCESSOR CLASS
-# =============================================================
 
 class DataProcessor:
-    """
-    Handles any tabular file format → cleans → extracts metadata.
-    Supports: CSV, Excel (.xlsx/.xls), JSON, Parquet, TSV, ODS, XML,
-              plain text tables, BytesIO streams (for FastAPI uploads).
-    Handles datasets with 10 columns or 500 columns equally well.
-    """
-
-    # =====================================================
-    # INITIALIZE
-    # =====================================================
-
+    
+      # INITIALIZE
+    
     def __init__(self, file_path):
 
         self.file_path = file_path
@@ -98,17 +87,12 @@ class DataProcessor:
             print(f"Error loading file: {e}")
             raise
 
-    # =============================================================
+    
     # STEP 2 — STANDARDIZE COLUMN NAMES
-    # =============================================================
+    
 
     def standardize_column_names(self):
-        """
-        NEW vs original:
-        - Also strips multiple consecutive underscores (e.g. 'sales__2024' → 'sales_2024')
-        - Strips leading/trailing underscores after transformation
-        - Handles completely duplicate column names by appending _1, _2 …
-        """
+       
         cleaned = []
         for col in self.df.columns:
             c = (
@@ -142,9 +126,7 @@ class DataProcessor:
         self.df.columns = result
         print("Column names standardized")
 
-    # =====================================================
-# CLEAN CURRENCY VALUES
-# =====================================================
+    # CLEAN CURRENCY VALUES
 
     def clean_currency_columns(self):
 
@@ -190,9 +172,9 @@ class DataProcessor:
 
                     print(f"Currency cleaned: {col}")
 
-    # =====================================================
+    
 # FIX CATEGORICAL INCONSISTENCIES
-# =====================================================
+
 
     def fix_categorical_inconsistencies(self):
 
@@ -215,9 +197,9 @@ class DataProcessor:
                     print(f"Normalized categories: {col}")
 
 
-    # =====================================================
+    
 # OPTIMIZE MEMORY
-# =====================================================
+
 
     def optimize_memory(self):
 
@@ -280,29 +262,23 @@ class DataProcessor:
         print(f"Optimized Memory Usage: {end_memory:.2f} MB")
         print(f"Memory Reduced By: {reduction:.2f}%")
 
-    # =============================================================
+   
     # STEP 3 — REMOVE DUPLICATES
-    # =============================================================
+   
 
     def remove_duplicates(self):
-        """Same logic as original but also resets index after drop."""
         dup_count = self.df.duplicated().sum()
         self.metadata['duplicate_rows_removed'] = int(dup_count)
         self.df.drop_duplicates(inplace=True)
         self.df.reset_index(drop=True, inplace=True)
         print(f"Removed {dup_count} duplicate rows")
 
-    # =============================================================
+    
     # STEP 4 — CONVERT NUMERIC COLUMNS
-    # =============================================================
+    
 
     def convert_numeric_columns(self):
-        """
-        NEW vs original:
-        - Strips currency symbols and commas before converting
-          (handles values like '$1,200.50' or '₹45,000')
-        - Only converts if 70%+ of values are numeric (same threshold)
-        """
+        
         for col in self.df.columns:
             if self.df[col].dtype != 'object':
                 continue
@@ -318,18 +294,12 @@ class DataProcessor:
                 self.df[col] = converted
                 print(f"Converted numeric column: {col}")
 
-    # =============================================================
+    
     # STEP 5 — DETECT DATE COLUMNS
-    # =============================================================
+    
 
     def detect_date_columns(self):
-        """
-        Same heuristic as original but:
-        NEW: also catches columns that are already dtype datetime64
-             (e.g. Parquet files pre-typed as datetime)
-        NEW: skips columns that are clearly IDs or codes
-             (high cardinality integers — won't look like dates)
-        """
+        
         detected = []
 
         # Already datetime (e.g. from Parquet)
@@ -356,36 +326,11 @@ class DataProcessor:
         print(f"Detected date columns: {detected}")
         return detected
 
-    # =============================================================
     # STEP 6 — CONVERT DATE COLUMNS (handles dd/mm vs mm/dd)
-    # =============================================================
+    
 
     def convert_date_columns(self):
-        """
-        MAJOR improvement over original:
-
-        Problem in original:
-          It tries dayfirst=False first, then dayfirst=True only if 
-          >40% NaT. But this is unreliable — '05/06/2023' is ambiguous.
-
-        New approach — 4-step smart detection:
-          1. Scan 30 sample values for any day value > 12
-             → if found, MUST be dayfirst=True (because month can't be > 12)
-          2. Check known regional hints in column name
-             ('date_india', 'dob', 'invoice_date' → assume dayfirst=True
-              for Indian datasets; 'ship_date_us' → dayfirst=False)
-          3. Try both formats, pick the one with fewer NaT values
-          4. If still tied → default to dayfirst=False (ISO standard)
-
-        Also creates richer date features:
-          - year, month, day, day_name, quarter (original had these)
-          - week_of_year    ← NEW
-          - is_weekend      ← NEW (True/False flag)
-          - is_month_start  ← NEW
-          - is_month_end    ← NEW
-          These extra features help the LLM write better chart code
-          (e.g. "group by is_weekend" or "filter by quarter").
-        """
+        
         date_cols = self.detect_date_columns()
 
         for col in date_cols:
@@ -458,24 +403,10 @@ class DataProcessor:
         except Exception as e:
             print(f"Could not add date features for '{col}': {e}")
 
-    # =============================================================
-    # STEP 7 — ANALYZE MISSING VALUES (with drop/fill decision)
-    # =============================================================
+  # STEP 7 — ANALYZE MISSING VALUES (with drop/fill decision)
+  
 
     def analyze_missing_values(self):
-        """
-        NEW vs original: 
-        Now returns a recommendation for each column:
-          - 'drop_column'  if missing > 70%
-          - 'drop_rows'    if missing < 5% (small enough to just remove rows)
-          - 'fill_mean'    if numeric and low skew
-          - 'fill_median'  if numeric and high skew (|skew| > 1)
-          - 'fill_mode'    if categorical
-          - 'fill_zero'    if column name suggests a count/amount and 
-                           missing likely means zero (e.g. 'quantity', 'returns')
-        This recommendation is stored in metadata so the dashboard can
-        show the user WHY each column was handled a certain way.
-        """
         missing_info = {}
 
         for col in self.df.columns:
@@ -512,10 +443,7 @@ class DataProcessor:
         return missing_info
 
     def _is_likely_important(self, col):
-        """
-        Heuristic: flag columns that are likely critical for dashboards.
-        These should NEVER be silently dropped even if they have many nulls.
-        """
+       
         important_keywords = [
             'sales', 'revenue', 'amount', 'price', 'profit', 'cost',
             'date', 'store', 'product', 'region', 'category', 'id',
@@ -523,26 +451,11 @@ class DataProcessor:
         ]
         col_lower = col.lower()
         return any(kw in col_lower for kw in important_keywords)
-
-    # =============================================================
+   
     # STEP 8 — HANDLE MISSING VALUES
-    # =============================================================
-
+   
     def handle_missing_values(self):
-        """
-        Uses the recommendations from analyze_missing_values().
         
-        NEW vs original:
-        - Respects the 'fill_zero' case (original never had this)
-        - For 'drop_rows': removes those rows instead of filling
-          (keeps columns accurate when only a few rows are bad)
-        - Warns before dropping an important column — records it
-          in metadata['important_columns_dropped'] for the interview
-          explanation / UI warning
-        - Uses df[col] = df[col].fillna(...) instead of 
-          df[col].fillna(..., inplace=True) which is deprecated 
-          in newer Pandas versions
-        """
         if 'missing_values' not in self.metadata:
             self.analyze_missing_values()
 
@@ -606,17 +519,10 @@ class DataProcessor:
         print(f"Dropped columns:  {dropped_columns}")
         print(f"Filled columns:   {[c for c, _ in filled_columns]}")
 
-    # =============================================================
-    # STEP 9 — REMOVE HIGHLY EMPTY ROWS
-    # =============================================================
-
+        # STEP 9 — REMOVE HIGHLY EMPTY ROWS
+    
     def remove_empty_rows(self):
-        """
-        NEW: threshold is now 60% (original was 50%).
-        50% was too aggressive — a row with half its columns filled
-        is still useful in most retail datasets.
-        Also resets index after drop.
-        """
+      
         threshold    = int(self.df.shape[1] * 0.6)
         initial_rows = len(self.df)
         self.df.dropna(thresh=threshold, inplace=True)
@@ -625,20 +531,12 @@ class DataProcessor:
         self.metadata['rows_removed_empty'] = int(removed)
         print(f"Removed {removed} highly empty rows (threshold: 60% non-null)")
 
-    # =============================================================
+   
     # STEP 10 — OUTLIER HANDLING
-    # =============================================================
+   
 
     def handle_outliers(self):
-        """
-        NEW vs original:
-        - Original capped ALL numeric columns.
-          New version SKIPS columns that are IDs, years, or codes
-          (capping 'customer_id' or 'year' makes no sense).
-        - Records both the count AND the percentage of outliers
-          so the metadata is richer for the dashboard.
-        - Uses .clip() instead of np.where — cleaner and faster.
-        """
+        
         outlier_info   = {}
         skip_keywords  = ['id', 'code', 'year', 'month', 'day', 'zip', 'pin', 'phone']
 
@@ -673,27 +571,12 @@ class DataProcessor:
         self.metadata['outliers_handled'] = outlier_info
         print("Outlier handling completed")
 
-    # =============================================================
+   
     # STEP 11 — FIX INCONSISTENT CATEGORICAL VALUES  ← NEW
-    # =============================================================
+   
 
     def fix_categorical_inconsistencies(self):
-        """
-        COMPLETELY NEW — not in original code.
-
-        Real-world datasets have category columns with messy values:
-          'Mumbai', 'mumbai', 'MUMBAI ', 'mumbai.' → all mean the same thing
-          'Male', 'male', 'M', 'MALE'              → same value
-
-        This step:
-        1. Strips whitespace and normalizes to title case for low-cardinality
-           object columns (columns with fewer than 50 unique values).
-        2. Records which columns were cleaned in metadata.
-
-        Why important for dashboards:
-          Without this, a bar chart shows 'Mumbai' and 'mumbai' as two
-          separate bars — your sales data looks split when it shouldn't be.
-        """
+       
         cleaned_cols = []
         for col in self.df.select_dtypes(include='object').columns:
             n_unique = self.df[col].nunique()
@@ -715,25 +598,11 @@ class DataProcessor:
         if cleaned_cols:
             print(f"Categorical inconsistencies fixed in: {[c['column'] for c in cleaned_cols]}")
 
-    # =============================================================
     # STEP 12 — DROP CONSTANT AND NEAR-CONSTANT COLUMNS  ← NEW
-    # =============================================================
+
 
     def drop_useless_columns(self):
-        """
-        COMPLETELY NEW — not in original code.
-
-        Drops:
-        1. Constant columns  — every row has the same value
-           (e.g. 'country' = 'India' for all 50,000 rows — useless for charts)
-        2. Near-constant columns — 99%+ rows have the same value
-        3. Columns that are just row numbers / unnamed index columns
-           (Unnamed: 0, index, row_num etc.)
-
-        Why important:
-          These columns clutter the metadata the LLM reads.
-          Fewer useless columns = LLM makes better chart decisions.
-        """
+       
         dropped = []
 
         for col in list(self.df.columns):
@@ -761,26 +630,12 @@ class DataProcessor:
         if dropped:
             print(f"Dropped useless columns: {[c for c, _ in dropped]}")
 
-    # =============================================================
-    # STEP 13 — MEMORY OPTIMIZATION  ← NEW
-    # =============================================================
+
+    # STEP 13 — MEMORY OPTIMIZATION  
+
 
     def optimize_memory(self):
-        """
-        COMPLETELY NEW — not in original code.
-
-        For large datasets (100k+ rows, 50–100 columns), memory usage
-        can blow up to several GB. This step:
-
-        1. Downcasts integer columns (int64 → int32 or int16 if range allows)
-        2. Downcasts float columns  (float64 → float32)
-        3. Converts low-cardinality object columns to 'category' dtype
-           (e.g. 'Region' with 10 unique values stored as category 
-            uses 10x less memory than storing the full string 10,000 times)
-
-        Example: a 500k-row retail dataset can go from 800MB → 150MB.
-        This makes Pandas operations faster too.
-        """
+       
         mem_before = self.df.memory_usage(deep=True).sum() / (1024 * 1024)
 
         # Downcast integers
@@ -804,20 +659,13 @@ class DataProcessor:
         self.metadata['memory_saved_mb']  = saved
         print(f"Memory optimized: {mem_before:.1f}MB → {mem_after:.1f}MB (saved {saved}MB)")
 
-    # =============================================================
-    # STEP 14 — EXTRACT METADATA (rich version)
-    # =============================================================
+
+         # GENERATE LLM SCHEMA DESCRIPTION
+        # STEP 14 — EXTRACT METADATA
+    
 
     def extract_metadata(self):
-        """
-        NEW vs original:
-        - Adds numeric_summary (min, max, mean, std for each numeric column)
-          so the LLM gets richer context for chart code generation
-        - Adds top_values for categorical columns (top 10 most common)
-          so the LLM knows "Store" has values like 'Mumbai North', 'Delhi South'
-        - Adds a human-readable schema_description string that is sent
-          directly to the LLM as part of the prompt
-        """
+    
         self.metadata['shape']           = self.df.shape
         self.metadata['row_count']       = int(self.df.shape[0])
         self.metadata['column_count']    = int(self.df.shape[1])
@@ -864,9 +712,8 @@ class DataProcessor:
             )
         self.metadata['top_categorical_values'] = top_values
 
-        # -------------------------------------------------------
         # LLM-READY schema description string
-        # -------------------------------------------------------
+        
         lines = [
             f"Dataset: {self.metadata['row_count']} rows × {self.metadata['column_count']} columns.",
             "Columns:"
@@ -897,82 +744,8 @@ class DataProcessor:
 
         print("Metadata extraction completed")
 
-# =====================================================
-# GENERATE LLM SCHEMA DESCRIPTION
-# =====================================================
-
-    def generate_llm_schema_description(self):
-
-        schema_text = []
-
-        schema_text.append(
-            f"Dataset Shape: {self.df.shape}"
-        )
-
-        schema_text.append("\nColumns Information:\n")
-
-        for col in self.df.columns:
-
-            dtype = str(self.df[col].dtype)
-
-            unique_values = self.df[col].nunique()
-
-            line = (
-                f"Column: {col} | "
-                f"Type: {dtype} | "
-                f"Unique Values: {unique_values}"
-            )
-
-            # NUMERIC SUMMARY
-            if pd.api.types.is_numeric_dtype(self.df[col]):
-
-                line += (
-                    f" | Min: {self.df[col].min()}"
-                    f" | Max: {self.df[col].max()}"
-                    f" | Mean: {round(self.df[col].mean(), 2)}"
-                )
-
-            # CATEGORY SUMMARY
-            elif self.df[col].dtype == 'category' or dtype == 'object':
-
-                top_values = (
-                    self.df[col]
-                    .value_counts()
-                    .head(3)
-                    .index
-                    .tolist()
-                )
-
-                line += f" | Top Values: {top_values}"
-
-            # DATE SUMMARY
-            if 'datetime' in dtype:
-
-                line += (
-                    f" | Date Range: "
-                    f"{self.df[col].min()} "
-                    f"to "
-                    f"{self.df[col].max()}"
-                )
-
-            schema_text.append(line)
-
-        final_schema = "\n".join(schema_text)
-
-        self.metadata[
-            'llm_schema_description'
-        ] = final_schema
-
-        print("LLM schema description generated")
-        # =============================================================
-        # FULL PIPELINE
-        # =============================================================
-
     def process(self):
-        """
-        Runs every step in the correct order.
-        Returns the clean DataFrame and the full metadata dict.
-        """
+        
         print("\n" + "="*60)
         print("  STARTING DATA PREPROCESSING PIPELINE")
         print("="*60)
@@ -982,18 +755,18 @@ class DataProcessor:
         self.clean_currency_columns()         # Step 2.1
         self.fix_categorical_inconsistencies()# Step 2.2
         self.remove_duplicates()              # Step 3
-        self.drop_useless_columns()           # Step 4  ← NEW
+        self.drop_useless_columns()           # Step 4  
         self.convert_numeric_columns()        # Step 5
         self.convert_date_columns()           # Step 6
-        self.fix_categorical_inconsistencies()# Step 7  ← NEW
+        self.fix_categorical_inconsistencies()# Step 7  
         self.analyze_missing_values()         # Step 8
         self.handle_missing_values()          # Step 9
         self.remove_empty_rows()              # Step 10
         self.optimize_memory()
         self.handle_outliers()                # Step 11
-        self.optimize_memory()                # Step 12 ← NEW
+        self.optimize_memory()                # Step 12 
         self.extract_metadata()              # Step 13
-        self.generate_llm_schema_description()
+        
 
         print("\n" + "="*60)
         print("  PIPELINE COMPLETE")
@@ -1001,98 +774,145 @@ class DataProcessor:
         print("="*60 + "\n")
 
         return self.df, self.metadata
+    
 
 
-# =============================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+
+
+
 # MAIN — local file test
-# =============================================================
+#standalone script execution mode
+# allows running this file directly to test the preprocessing on a sample dataset
 
-if __name__ == '__main__':
+# if __name__ == '__main__':
 
-    import sys
+#     import sys
+#     #system arguments module
 
-    file_path = sys.argv[1] if len(sys.argv) > 1 else 'data/sample.csv'
+#     file_path = sys.argv[1] if len(sys.argv) > 1 else 'data/sample.csv'
 
-    processor = DataProcessor(r"C:\Users\Krish Patel\OneDrive\Desktop\M_tech\LLM\data\Walmart.csv")
-    clean_df, metadata = processor.process()
+#     processor = DataProcessor(r"C:\Users\Krish Patel\OneDrive\Desktop\M_tech\LLM\data\Walmart.csv")
+#     clean_df, metadata = processor.process()
 
-    # =========================================================
-    # SAVE SUMMARY TO FILE
-    # =========================================================
+   
+#     # SAVE SUMMARY TO FILE
+   
 
-    output_file = "outputs/dataset_summary.txt"
+#     output_file = "outputs/dataset_summary.txt"
 
-    with open(output_file, "w", encoding="utf-8") as f:
+#     with open(output_file, "w", encoding="utf-8") as f:
 
-        # ==========================================
-        # BASIC INFO
-        # ==========================================
+#                # BASIC INFO
+       
 
-        f.write("=" * 60 + "\n")
-        f.write("DATASET SUMMARY REPORT\n")
-        f.write("=" * 60 + "\n\n")
+#         f.write("=" * 60 + "\n")
+#         f.write("DATASET SUMMARY REPORT\n")
+#         f.write("=" * 60 + "\n\n")
 
-        # ==========================================
-        # LLM SCHEMA
-        # ==========================================
+#                # LLM SCHEMA
+       
+#         f.write("LLM SCHEMA DESCRIPTION\n")
+#         f.write("-" * 60 + "\n")
 
-        f.write("LLM SCHEMA DESCRIPTION\n")
-        f.write("-" * 60 + "\n")
+#         f.write(metadata['llm_schema_description'])
 
-        f.write(metadata['llm_schema_description'])
+#         f.write("\n\n")
 
-        f.write("\n\n")
+#                # MISSING VALUES
+    
+#         f.write("MISSING VALUE DECISIONS\n")
+#         f.write("-" * 60 + "\n")
 
-        # ==========================================
-        # MISSING VALUES
-        # ==========================================
+#         for col, info in metadata['missing_values'].items():
 
-        f.write("MISSING VALUE DECISIONS\n")
-        f.write("-" * 60 + "\n")
+#             if info['missing_count'] > 0:
 
-        for col, info in metadata['missing_values'].items():
+#                 f.write(
+#                     f"{col}: "
+#                     f"{info['missing_percent']}% missing "
+#                     f"→ {info['recommendation']} "
+#                     f"| important={info['is_important']}\n"
+#                 )
 
-            if info['missing_count'] > 0:
+#         f.write("\n")
 
-                f.write(
-                    f"{col}: "
-                    f"{info['missing_percent']}% missing "
-                    f"→ {info['recommendation']} "
-                    f"| important={info['is_important']}\n"
-                )
+#                # OUTLIERS
+       
+#         f.write("OUTLIER HANDLING\n")
+#         f.write("-" * 60 + "\n")
 
-        f.write("\n")
+#         for col, info in metadata.get('outliers_handled', {}).items():
 
-        # ==========================================
-        # OUTLIERS
-        # ==========================================
+#             if info['count'] > 0:
 
-        f.write("OUTLIER HANDLING\n")
-        f.write("-" * 60 + "\n")
+#                 f.write(
+#                     f"{col}: "
+#                     f"{info['count']} outliers "
+#                     f"({info['percent']}%) "
+#                     f"clipped to "
+#                     f"[{info['lower_bound']}, {info['upper_bound']}]\n"
+#                 )
 
-        for col, info in metadata.get('outliers_handled', {}).items():
+#         f.write("\n")
 
-            if info['count'] > 0:
+#                 # CLEAN DATASET SAMPLE
+       
+#         f.write("CLEAN DATASET SAMPLE\n")
+#         f.write("-" * 60 + "\n")
 
-                f.write(
-                    f"{col}: "
-                    f"{info['count']} outliers "
-                    f"({info['percent']}%) "
-                    f"clipped to "
-                    f"[{info['lower_bound']}, {info['upper_bound']}]\n"
-                )
+#         f.write(clean_df.head().to_string())
 
-        f.write("\n")
+#         f.write("\n\n")
 
-        # ==========================================
-        # CLEAN DATASET SAMPLE
-        # ==========================================
+#     print(f"\nDataset summary saved to: {output_file}")
 
-        f.write("CLEAN DATASET SAMPLE\n")
-        f.write("-" * 60 + "\n")
+    
+        # FULL PIPELINE
+        # 1. LOAD FILE
+        # 2. STANDARDIZE COLUMN NAMES
+        # 3. CLEAN CURRENCY COLUMNS
+        # 4. FIX CATEGORICAL INCONSISTENCIES
+        # 5. REMOVE DUPLICATES
+        # 6. DROP USELESS COLUMNS
+        # 7. CONVERT NUMERIC COLUMNS
+        # 8. CONVERT DATE COLUMNS
+        # 9. FIX CATEGORICAL INCONSISTENCIES
+        # 10. ANALYZE MISSING VALUES
+        # 11. HANDLE MISSING VALUES
+        # 12. REMOVE EMPTY ROWS
+        # 13. OPTIMIZE MEMORY
+        # 14. HANDLE OUTLIERS
+        # 15. OPTIMIZE MEMORY
+        # 16. EXTRACT METADATA
+        # 17. GENERATE LLM SCHEMA DESCRIPTION   
 
-        f.write(clean_df.head().to_string())
-
-        f.write("\n\n")
-
-    print(f"\nDataset summary saved to: {output_file}")

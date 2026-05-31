@@ -8,9 +8,6 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-# ── Import your Day 2 and Day 3 files ──────────────────────────
-# Make sure this file (main.py) is in the same folder as
-# llm_engine.py and preprocess_data.py
 sys.path.append(os.path.dirname(__file__))
 
 from preprocess_data import DataProcessor
@@ -40,21 +37,8 @@ app.add_middleware(
 )
 
 
-# ================================================================
+
 # SESSION STORE
-# ================================================================
-# This is an in-memory store.
-# When user uploads a file, df and metadata are saved here.
-# Every subsequent endpoint (/generate-charts, /ask, /report)
-# reads from here — no need to re-upload the file.
-#
-# Structure:
-#   SESSION["df"]       → Pandas DataFrame (the clean data)
-#   SESSION["metadata"] → dict with schema, column info, etc.
-#   SESSION["filename"] → original file name
-#
-# Note: This works for one user at a time (demo/interview use).
-# For multi-user production, use Redis or database sessions.
 
 SESSION = {
     "df":       None,
@@ -63,36 +47,32 @@ SESSION = {
 }
 
 
-# ================================================================
-# LLM ENGINE — initialised once when server starts
-# ================================================================
+
+# LLM ENGINE initialised once when server starts
+
 # This loads the connection to Ollama once.
 # All 4 endpoints share this single engine instance.
 
-print("\n🚀 Starting AI Dashboard Generator...")
+print("\n Starting AI Dashboard Generator...")
 engine = LLMEngine(model="llama3.2", debug=False)
+#creating object of llm class    run cleaner production-style output        
+# do not show extra log and errors
 
 
-# ================================================================
-# REQUEST MODELS (what the frontend sends)
-# ================================================================
+
+# REQUEST MODELS comes form FE
+
 
 class ChartRequest(BaseModel):
-    prompt: str          # e.g. "Show sales by store and holiday impact"
-
+    prompt: str         
 class QuestionRequest(BaseModel):
-    question: str        # e.g. "Which store had the highest sales?"
+    question: str       
 
 
-# ================================================================
-# HELPER — check if data is loaded
-# ================================================================
+# HELPER   check if data is loaded
 
 def require_data():
-    """
-    Called at the start of every endpoint that needs the dataset.
-    Raises a clear error if user hasn't uploaded a file yet.
-    """
+   
     if SESSION["df"] is None:
         raise HTTPException(
             status_code=400,
@@ -101,10 +81,8 @@ def require_data():
     return SESSION["df"], SESSION["metadata"]
 
 
-# ================================================================
 # ENDPOINT 1 — GET /
 # Health check — confirms server is running
-# ================================================================
 
 @app.get("/")
 def root():
@@ -121,10 +99,10 @@ def root():
     }
 
 
-# ================================================================
+
 # ENDPOINT 2 — GET /status
 # Returns what data is currently loaded in memory
-# ================================================================
+
 
 @app.get("/status")
 def get_status():
@@ -145,26 +123,11 @@ def get_status():
     }
 
 
-# ================================================================
 # ENDPOINT 3 — POST /upload
-# ================================================================
-# What frontend sends:  multipart form with a file
-# What this does:
-#   1. Reads the file bytes
-#   2. Passes to DataProcessor (your Day 2 file)
-#   3. Gets back clean df + metadata
-#   4. Saves both in SESSION
-#   5. Returns schema info to frontend
-# What frontend receives: column names, data types, row count, schema
 
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
-    """
-    Upload any CSV, Excel, or JSON file.
-    The file is cleaned by DataProcessor and stored in memory.
-    All subsequent endpoints use this stored data.
-    """
-
+    
     # ── Read file bytes ───────────────────────────────────────
     file_bytes    = await file.read()
     original_name = file.filename
@@ -182,10 +145,6 @@ async def upload_file(file: UploadFile = File(...)):
                    f"Allowed: {allowed_extensions}"
         )
 
-    # ── Save bytes to a temp file, pass path to DataProcessor ──
-    # DataProcessor.__init__ accepts a file_path string.
-    # We save uploaded bytes to a temp file → pass that path →
-    # delete temp file after processing is done.
     import tempfile
     temp_path = None
     try:
@@ -211,7 +170,7 @@ async def upload_file(file: UploadFile = File(...)):
     SESSION["metadata"] = metadata
     SESSION["filename"] = original_name
 
-    print(f"[Upload] ✅ Stored in session: {clean_df.shape[0]} rows × {clean_df.shape[1]} cols")
+    print(f"[Upload]    Stored in session: {clean_df.shape[0]} rows × {clean_df.shape[1]} cols")
 
     # ── Build response ────────────────────────────────────────
     # Send back enough info for React to show a preview
@@ -248,7 +207,7 @@ async def upload_file(file: UploadFile = File(...)):
     }
 
 
-# ================================================================
+
 # ENDPOINT 4 — POST /generate-charts
 # ================================================================
 # What frontend sends:  { "prompt": "Show sales by store over time" }
@@ -261,11 +220,7 @@ async def upload_file(file: UploadFile = File(...)):
 
 @app.post("/generate-charts")
 def generate_charts(request: ChartRequest):
-    """
-    Generate interactive Plotly charts from a natural language prompt.
-    Requires a file to be uploaded first via POST /upload.
-    """
-
+    
     df, metadata = require_data()
 
     if not request.prompt or len(request.prompt.strip()) < 3:
@@ -289,13 +244,13 @@ def generate_charts(request: ChartRequest):
             detail=f"Chart generation failed: {str(e)}"
         )
 
-    print(f"[Charts] ✅ Returning {len(figures)} charts to frontend")
+    print(f"[Charts]   Returning {len(figures)} charts to frontend")
 
     return {
         "success":     True,
         "chart_count": len(figures),
         "prompt":      request.prompt,
-        "charts":      figures       # list of {"title": str, "figure_json": dict}
+        "charts":      figures       # List of Plotly figure JSONs
     }
 
 
@@ -312,10 +267,7 @@ def generate_charts(request: ChartRequest):
 
 @app.post("/ask")
 def ask_question(request: QuestionRequest):
-    """
-    Ask any business question about the uploaded dataset.
-    Returns a plain English answer + the Pandas query that ran.
-    """
+    
 
     df, metadata = require_data()
 
@@ -340,7 +292,7 @@ def ask_question(request: QuestionRequest):
             detail=f"Q&A failed: {str(e)}"
         )
 
-    print(f"[Q&A] ✅ Answer generated")
+    print(f"[Q&A]  Answer generated")
 
     return {
         "success":     True,
@@ -348,7 +300,7 @@ def ask_question(request: QuestionRequest):
         "answer":      result["answer"],
         "raw_result":  result["raw_result"],
         "pandas_query": result["pandas_query"],
-        "mini_chart":  result["mini_chart"]    # None or Plotly figure JSON
+        "mini_chart":  result["mini_chart"]    
     }
 
 
